@@ -1,1 +1,20 @@
 Link webhook cảu Discore , có thể lên youtube để tìm cách lấy đường link
+
+
+✅ Bước 1: Tạo kênh để nhận cảnh báo
+Mở Discord.
+
+Chọn server bạn muốn nhận cảnh báo.
+
+Nhấn chuột phải vào một kênh (ví dụ: #giamsat), chọn "Edit Channel" (Chỉnh sửa kênh).
+
+Chọn tab Integrations → bấm "Create Webhook".
+
+✅ Bước 2: Lấy link webhook
+Đặt tên cho webhook, ví dụ: Giám Sát Bot.
+
+Chọn kênh sẽ gửi cảnh báo.
+
+Nhấn "Copy Webhook URL".
+
+Dán vào file cấu hình của bạn (nếu có webhook sử dụng).
