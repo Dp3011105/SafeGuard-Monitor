@@ -1,0 +1,44 @@
+Lên youtube tìm cách tạo bot , sau đó thêm bot vào service discore
+
+Hướng dẫn 
+
+✅ Bước 1: Tạo bot trên Discord Developer Portal
+Truy cập: https://discord.com/developers/applications
+
+Bấm "New Application" → đặt tên → bấm "Create".
+
+✅ Bước 2: Thêm bot vào ứng dụng
+Trong menu bên trái, chọn "Bot" → nhấn "Add Bot" → Yes, do it!
+
+Bật các mục sau:
+
+MESSAGE CONTENT INTENT (bắt buộc để bot đọc tin nhắn)
+
+Tùy chọn: bật cả PRESENCE, SERVER MEMBERS nếu muốn.
+
+✅ Bước 3: Lấy Bot Token
+Trong tab Bot, nhấn nút "Copy" tại phần Token.
+
+⚠️ Đây là chuỗi rất quan trọng, không chia sẻ với người khác.
+
+Dán token vào file bot_token.txt hoặc trong biến bot_token = "..." nếu bạn dùng trực tiếp trong mã Python.
+
+
+ADD BOT VÀO SERVER 
+✅ Bước 1: Tạo link mời bot
+Trong ứng dụng bot, chọn OAuth2 → URL Generator.
+
+Tích các ô sau:
+
+SCOPES: bot
+
+BOT PERMISSIONS: Send Messages, Read Message History, View Channels, Read Messages
+
+Kéo xuống và copy link ở dưới.
+
+✅ Bước 2: Mời bot vào server
+Dán link vào trình duyệt.
+
+Chọn server muốn thêm bot.
+
+Nhấn "Authorize" → tick CAPTCHA → xong!
