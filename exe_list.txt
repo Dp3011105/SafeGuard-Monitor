@@ -1,1 +1,3 @@
 terminal64.exe
+google.exe
+Pubg.exe
