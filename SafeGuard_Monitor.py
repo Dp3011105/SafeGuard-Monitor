@@ -11,6 +11,11 @@ import pygetwindow as gw
 from discord_webhook import DiscordWebhook
 import discord
 from discord.ext import commands
+import base64
+import cv2
+from pyzbar.pyzbar import decode
+from PIL import Image, ImageTk
+import numpy as np
 
 # =========================
 # CẤU HÌNH ĐƯỜNG DẪN FILE
@@ -26,11 +31,45 @@ BOT_TOKEN_FILE = "bot_token.txt"
 # HÀM HỖ TRỢ
 # =========================
 def read_config(file_path):
+    if file_path == PASSWORD_FILE:
+        try:
+            # Kiểm tra file password.txt
+            if not os.path.exists(file_path):
+                # File không tồn tại, tạo mới với giá trị mặc định
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write("MTIzNDU2Nzg=\n")  # Base64 của "12345678"
+                return ["MTIzNDU2Nzg="]
+            
+            # Đọc nội dung file
+            with open(file_path, 'r', encoding='utf-8') as f:
+                lines = [line.strip() for line in f if line.strip()]
+            
+            # Nếu file trống hoặc chỉ chứa ký tự trống, tạo mới
+            if not lines:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write("MTIzNDU2Nzg=\n")  # Base64 của "12345678"
+                return ["MTIzNDU2Nzg="]
+            
+            return lines
+        except Exception as e:
+            print(f"❌ Lỗi đọc file {file_path}: {e}")
+            # Tạo file mới nếu có lỗi
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write("MTIzNDU2Nzg=\n")
+            return ["MTIzNDU2Nzg="]
+    
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
-            return [line.strip() for line in f if line.strip()]
+            lines = [line.strip() for line in f if line.strip()]
+        if file_path in [EXE_FILE, WEBSITE_FILE]:
+            # Giải mã Base64 cho exe_list.txt và website_list.txt
+            return [base64.b64decode(line).decode('utf-8') for line in lines]
+        return lines
     except FileNotFoundError:
         print(f"⚠️ Không tìm thấy file: {file_path}")
+        return []
+    except base64.binascii.Error:
+        print(f"❌ Lỗi giải mã Base64 trong file: {file_path}")
         return []
 
 def send_discord_message(message):
@@ -95,7 +134,7 @@ def close_forbidden_apps():
         print(f"Lỗi khi kiểm tra cửa sổ: {e}")
 
 # =========================
-# GIAO DIỆN CẢNH BÁO (Updated to stay on top)
+# GIAO DIỆN CẢNH BÁO
 # =========================
 class WarningScreen:
     def __init__(self, reason):
@@ -106,25 +145,104 @@ class WarningScreen:
         self.root.configure(bg='red')
         self.root.overrideredirect(True)
         self.root.protocol("WM_DELETE_WINDOW", lambda: None)
-        self.root.attributes('-topmost', True)  # Make sure it stays on top
+        self.root.attributes('-topmost', True)
         current_warning_screen = self
+        self.camera_active = False
 
         for key in BLOCKED_KEYS:
             keyboard.block_key(key)
 
-        tk.Label(self.root, text=f"CẢNH BÁO: {reason}", font=("Arial", 30), bg='red', fg='white').pack(pady=50)
-        tk.Label(self.root, text="Nhập mật khẩu hoặc chờ mở khóa từ Discord:", font=("Arial", 20), bg='red', fg='white').pack(pady=20)
-        self.password_entry = tk.Entry(self.root, show="*", font=("Arial", 20))
+        # Giao diện
+        tk.Label(self.root, text=f"CẢNH BÁO: {reason}", font=("Arial", 30), bg='red', fg='white').pack(pady=20)
+        tk.Label(self.root, text="Nhập mật khẩu (8 số) hoặc quét QR:", font=("Arial", 20), bg='red', fg='white').pack(pady=10)
+
+        # Ô nhập mật khẩu (hiển thị *)
+        self.password_entry = tk.Entry(self.root, font=("Arial", 20), show="*")
         self.password_entry.pack(pady=10)
+        # Giới hạn chỉ nhập số
+        self.password_entry.config(validate="key", validatecommand=(self.root.register(self.validate_number), '%P'))
+        self.password_entry.bind('<KeyRelease>', self.check_password_length)
+
         tk.Button(self.root, text="Xác nhận", command=self.check_password, font=("Arial", 20)).pack(pady=10)
+        
+        # Nút mở camera
+        tk.Button(self.root, text="Quét QR", command=self.toggle_camera, font=("Arial", 20)).pack(pady=10)
+        
+        # Khung hiển thị camera
+        self.camera_label = tk.Label(self.root, bg='red')
+        self.camera_label.pack(pady=10)
+
         tk.Button(self.root, text="Tắt máy", command=self.shutdown, font=("Arial", 20)).pack(pady=10)
+        
         self.check_unlock_status()
+        self.start_camera()
+
+    def validate_number(self, text):
+        # Chỉ cho phép nhập số
+        return text.isdigit() or text == ""
+
+    def check_password_length(self, event):
+        password = self.password_entry.get()
+        if len(password) > 8:
+            self.password_entry.delete(8, tk.END)
+        if len(password) == 8:
+            self.check_password()
 
     def check_password(self):
-        if self.password_entry.get() in password_chars:
-            self.perform_unlock()
+        password = self.password_entry.get()
+        if len(password) == 8 and password.isdigit():
+            try:
+                encoded_password = base64.b64encode(password.encode('utf-8')).decode('utf-8')
+                if encoded_password in password_chars:
+                    self.perform_unlock()
+                else:
+                    messagebox.showerror("Lỗi", "Mật khẩu không đúng!")
+            except Exception as e:
+                messagebox.showerror("Lỗi", f"Lỗi mã hóa: {e}")
         else:
-            messagebox.showerror("Lỗi", "Mật khẩu không đúng!")
+            messagebox.showerror("Lỗi", "Mật khẩu phải là 8 chữ số!")
+
+    def start_camera(self):
+        self.cap = cv2.VideoCapture(0)
+        if not self.cap.isOpened():
+            messagebox.showerror("Lỗi", "Không thể truy cập camera!")
+            self.camera_active = False
+            return
+        self.camera_active = True
+        self.update_camera()
+
+    def toggle_camera(self):
+        if self.camera_active:
+            self.camera_active = False
+            self.cap.release()
+            self.camera_label.config(image='')
+        else:
+            self.start_camera()
+
+    def update_camera(self):
+        if self.camera_active:
+            ret, frame = self.cap.read()
+            if ret:
+                # Chuyển đổi khung hình sang định dạng RGB
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                # Giải mã QR code
+                qr_codes = decode(frame)
+                for qr in qr_codes:
+                    qr_data = qr.data.decode('utf-8')
+                    if qr_data in password_chars:
+                        self.perform_unlock()
+                        return
+                    else:
+                        print(f"QR không khớp: {qr_data}")
+
+                # Hiển thị khung hình camera trên giao diện
+                img = Image.fromarray(frame)
+                img = img.resize((320, 240))  # Điều chỉnh kích thước
+                imgtk = ImageTk.PhotoImage(image=img)
+                self.camera_label.config(image=imgtk)
+                self.camera_label.image = imgtk  # Giữ tham chiếu để tránh garbage collection
+
+            self.root.after(100, self.update_camera)
 
     def check_unlock_status(self):
         if unlock_flag:
@@ -135,6 +253,8 @@ class WarningScreen:
     def perform_unlock(self):
         global unlock_flag, current_warning_screen
         close_forbidden_apps()
+        if self.camera_active:
+            self.cap.release()
         self.root.destroy()
         for key in BLOCKED_KEYS:
             keyboard.unblock_key(key)
@@ -143,6 +263,8 @@ class WarningScreen:
         send_discord_message("✅ Đã mở khóa hệ thống")
 
     def shutdown(self):
+        if self.camera_active:
+            self.cap.release()
         os.system("shutdown /s /t 1")
 
     def run(self):
@@ -154,7 +276,6 @@ class WarningScreen:
 def monitor_exe_thread():
     global current_warning_screen
     while monitoring_active:
-        # Nếu đang pause thì không giám sát
         with pause_lock:
             if pause_active:
                 time.sleep(1)
@@ -205,7 +326,6 @@ def monitor_website_thread():
                 print(f"Lỗi kiểm tra website: {e}")
         time.sleep(1)
 
-
 # =========================
 # THREAD ĐẾM NGƯỢC TẠM DỪNG
 # =========================
@@ -215,7 +335,6 @@ def pause_timer_thread():
         with pause_lock:
             if pause_active and pause_duration > 0:
                 pause_duration -= 1
-
             if pause_active and pause_duration == 0:
                 pause_active = False
                 send_discord_message("⏱️ Hết thời gian tạm dừng. Giám sát tiếp tục.")
@@ -234,7 +353,7 @@ def discord_bot_thread():
         print(f"🤖 Bot đã sẵn sàng: {bot.user.name}")
 
     @bot.command()
-    async def unlock(ctx, *, password=None):  # Make password optional
+    async def unlock(ctx, *, password=None):
         global unlock_flag
         if password is None:
             await ctx.send("⚠️ Vui lòng nhập mật khẩu sau lệnh `!unlock` (ví dụ: `!unlock matkhau123`)")
@@ -249,12 +368,9 @@ def discord_bot_thread():
     @bot.command()
     async def unlock30p(ctx):
         global pause_duration, pause_active, current_warning_screen
-        
-        # Check if warning screen is active
         if current_warning_screen is not None:
             await ctx.send("⚠️ Hệ thống đang bị khóa! Vui lòng mở khóa bằng lệnh `!unlock` trước khi sử dụng lệnh này.")
             return
-            
         with pause_lock:
             if pause_active:
                 await ctx.send(f"⚠️ Đang trong thời gian tạm dừng. Vui lòng đợi {pause_duration // 60} phút.")
@@ -266,12 +382,9 @@ def discord_bot_thread():
     @bot.command()
     async def unlock1h(ctx):
         global pause_duration, pause_active, current_warning_screen
-        
-        # Check if warning screen is active
         if current_warning_screen is not None:
             await ctx.send("⚠️ Hệ thống đang bị khóa! Vui lòng mở khóa bằng lệnh `!unlock` trước khi sử dụng lệnh này.")
             return
-            
         with pause_lock:
             if pause_active:
                 await ctx.send(f"⚠️ Đang trong thời gian tạm dừng. Vui lòng đợi {pause_duration // 60} phút.")
@@ -283,12 +396,9 @@ def discord_bot_thread():
     @bot.command()
     async def locknow(ctx):
         global pause_duration, pause_active, current_warning_screen
-        
-        # Check if warning screen is active
         if current_warning_screen is not None:
             await ctx.send("⚠️ Hệ thống đang bị khóa! Vui lòng mở khóa bằng lệnh `!unlock` trước khi sử dụng lệnh này.")
             return
-            
         with pause_lock:
             if pause_active:
                 pause_duration = 0
